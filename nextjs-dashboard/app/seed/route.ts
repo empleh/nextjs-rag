@@ -101,6 +101,43 @@ async function seedRevenue() {
   return insertedRevenue;
 }
 
+async function seedScrapedContent() {
+  await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
+  
+  await sql`
+    CREATE TABLE IF NOT EXISTS scraped_content (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      url TEXT UNIQUE NOT NULL,
+      title TEXT,
+      content TEXT,
+      scraped_at TIMESTAMP DEFAULT NOW(),
+      chunk_count INTEGER,
+      status TEXT DEFAULT 'pending'
+    );
+  `;
+
+  // No initial data to seed for scraped_content table
+  return [];
+}
+
+async function seedContentChunks() {
+  await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
+  
+  await sql`
+    CREATE TABLE IF NOT EXISTS content_chunks (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      content_id UUID REFERENCES scraped_content(id),
+      chunk_text TEXT NOT NULL,
+      chunk_index INTEGER,
+      pinecone_id TEXT UNIQUE,
+      created_at TIMESTAMP DEFAULT NOW()
+    );
+  `;
+
+  // No initial data to seed for content_chunks table
+  return [];
+}
+
 export async function GET() {
   try {
     const result = await sql.begin((sql) => [
@@ -108,6 +145,8 @@ export async function GET() {
       seedCustomers(),
       seedInvoices(),
       seedRevenue(),
+      seedScrapedContent(),
+      seedContentChunks(),
     ]);
 
     return Response.json({ message: 'Database seeded successfully' });
