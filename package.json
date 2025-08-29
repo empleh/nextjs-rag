@@ -1,0 +1,15 @@
+{
+  "name": "nextjs-rag-root",
+  "private": true,
+  "scripts": {
+    "preinstall": "node -e \"console.error('❌ Install dependencies in the nextjs-dashboard directory instead:\\n\\ncd nextjs-dashboard && pnpm install'); process.exit(1)\"",
+    "dev": "cd nextjs-dashboard && pnpm dev",
+    "build": "cd nextjs-dashboard && pnpm build",
+    "start": "cd nextjs-dashboard && pnpm start",
+    "install": "node -e \"console.error('❌ Install dependencies in the nextjs-dashboard directory instead:\\n\\ncd nextjs-dashboard && pnpm install'); process.exit(1)\""
+  },
+  "workspaces": [],
+  "engines": {
+    "node": ">=18"
+  }
+}
