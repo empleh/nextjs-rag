@@ -77,7 +77,7 @@ export default function Page() {
           </div>
         ))}
         
-        {status === 'in_progress' && (
+        {status === 'streaming' && (
           <div className="flex justify-start">
             <div className="bg-white text-gray-900 shadow-sm border border-gray-200 px-4 py-2 rounded-2xl">
               <div className="flex space-x-1">
