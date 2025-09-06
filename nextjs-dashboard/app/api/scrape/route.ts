@@ -1,50 +1,11 @@
 // app/api/scrape/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { Pinecone } from '@pinecone-database/pinecone';
+import { ensureIndexExists } from '@/app/lib/pinecone';
 
 const pc = new Pinecone({
   apiKey: process.env.PINECONE_API_KEY!,
 });
-
-// Initialize index inside the handler to ensure env vars are loaded
-async function ensureIndexExists() {
-  const indexName = process.env.PINECONE_INDEX_NAME;
-  if (!indexName) {
-    throw new Error('PINECONE_INDEX_NAME environment variable is required');
-  }
-
-  try {
-    // Check if index exists
-    const indexList = await pc.listIndexes();
-    const indexExists = indexList.indexes?.some(index => index.name === indexName);
-    
-    if (!indexExists) {
-      console.log(`Creating Pinecone index: ${indexName}`);
-      
-      // Create index with 1536 dimensions (OpenAI embedding size)
-      await pc.createIndex({
-        name: indexName,
-        dimension: 1536,
-        metric: 'cosine',
-        spec: {
-          serverless: {
-            cloud: 'aws',
-            region: 'us-east-1'
-          }
-        }
-      });
-      
-      // Wait a moment for index to be ready
-      console.log('Waiting for index to be ready...');
-      await new Promise(resolve => setTimeout(resolve, 5000));
-    }
-    
-    return pc.index(indexName);
-  } catch (error) {
-    console.error('Error ensuring index exists:', error);
-    throw error;
-  }
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -80,7 +41,7 @@ export async function POST(req: NextRequest) {
       const chunkId = `${url.replace(/[^a-zA-Z0-9]/g, '_')}_chunk_${i}`;
       
       // For now, creating dummy embeddings - replace with actual embedding service
-      const embedding = Array(1536).fill(0).map(() => Math.random() * 2 - 1);
+      const embedding = Array(768).fill(0).map(() => Math.random() * 2 - 1);
       
       vectors.push({
         id: chunkId,

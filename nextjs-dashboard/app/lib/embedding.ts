@@ -5,20 +5,6 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-export async function generateEmbedding(text: string): Promise<number[]> {
-  try {
-    const response = await openai.embeddings.create({
-      model: 'text-embedding-3-small', // 1536 dimensions, cost-effective
-      input: text.substring(0, 8000), // Truncate if too long
-    });
-    
-    return response.data[0].embedding;
-  } catch (error) {
-    console.error('Embedding generation failed:', error);
-    throw error;
-  }
-}
-
 // lib/chunking.ts
 export interface ContentChunk {
   text: string;
