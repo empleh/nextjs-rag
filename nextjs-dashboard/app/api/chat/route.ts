@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       }) || [];
 
     // Filter by relevance score (optional - adjust threshold as needed)
-    const highQualityChunks = relevantChunks.filter((chunk) => chunk.score > 0.7);
+    const highQualityChunks = relevantChunks.filter((chunk) => chunk.score > 0.5);
     const chunksToUse = highQualityChunks.length > 0 ? highQualityChunks : relevantChunks.slice(0, 3);
 
     const context = defineContext(chunksToUse.map((c) => c.text.toString()));
