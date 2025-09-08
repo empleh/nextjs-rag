@@ -2,9 +2,32 @@ import { NextRequest, NextResponse } from 'next/server';
 import { google } from '@ai-sdk/google';
 import { convertToModelMessages, streamText, embed } from 'ai';
 import { queryVectors } from '@/app/lib/pinecone';
+import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/app/lib/rate-limiter';
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting
+    const clientId = getClientIdentifier(request);
+    const isProduction = process.env.NODE_ENV === 'production';
+    const rateLimit = checkRateLimit(
+      clientId, 
+      isProduction ? RATE_LIMITS.CHAT_PRODUCTION : RATE_LIMITS.CHAT_DEVELOPMENT
+    );
+
+    if (!rateLimit.allowed) {
+      return NextResponse.json({ 
+        error: rateLimit.error,
+        retryAfter: Math.ceil((rateLimit.resetTime - Date.now()) / 1000)
+      }, { 
+        status: 429,
+        headers: {
+          'Retry-After': Math.ceil((rateLimit.resetTime - Date.now()) / 1000).toString(),
+          'X-RateLimit-Remaining': rateLimit.remaining.toString(),
+          'X-RateLimit-Reset': new Date(rateLimit.resetTime).toISOString()
+        }
+      });
+    }
+
     const body = await request.json();
     const { messages } = body;
     const question = messages[messages.length - 1].parts[0].text;

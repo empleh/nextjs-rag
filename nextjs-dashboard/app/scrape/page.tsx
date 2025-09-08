@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { apiClient } from '../lib/api-client';
 
 export default function ScrapePage() {
@@ -8,6 +8,19 @@ export default function ScrapePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isScrapingEnabled, setIsScrapingEnabled] = useState(true);
+
+  // Check if scraping is enabled
+  useEffect(() => {
+    // Simple way to check - try to access the endpoint
+    fetch('/api/scrape', { 
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: '' }) // Empty URL will trigger validation, not the disabled check
+    }).catch(() => {
+      setIsScrapingEnabled(false);
+    });
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,6 +53,26 @@ export default function ScrapePage() {
     <div className="min-h-screen bg-gray-100 py-8">
       <div className="max-w-2xl mx-auto px-4">
         <h1 className="text-3xl font-bold text-gray-900 mb-8">Web Scraper</h1>
+        
+        {!isScrapingEnabled && (
+          <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-yellow-800">Scraping Disabled</h3>
+                <p className="mt-1 text-sm text-yellow-700">
+                  Web scraping is disabled in production for security and cost control. 
+                  This feature is only available in development environments.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="bg-white shadow-md rounded-lg p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -53,16 +86,16 @@ export default function ScrapePage() {
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://example.com"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                disabled={isLoading}
+                disabled={isLoading || !isScrapingEnabled}
               />
             </div>
 
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || !isScrapingEnabled}
               className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isLoading ? 'Scraping...' : 'Scrape URL'}
+              {!isScrapingEnabled ? 'Scraping Disabled' : isLoading ? 'Scraping...' : 'Scrape URL'}
             </button>
           </form>
           {error && (

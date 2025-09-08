@@ -15,6 +15,13 @@ const pc = new Pinecone({
 
 export async function POST(req: NextRequest) {
   try {
+    // Disable scrape endpoint in production
+    if (process.env.NODE_ENV === 'production') {
+      return NextResponse.json({ 
+        error: 'Scraping is disabled in production for security' 
+      }, { status: 403 });
+    }
+
     // Validate environment variables
     if (!process.env.PINECONE_API_KEY) {
       return NextResponse.json({ error: 'PINECONE_API_KEY is not configured' }, { status: 500 });
