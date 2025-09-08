@@ -12,14 +12,7 @@ export default function ScrapePage() {
 
   // Check if scraping is enabled
   useEffect(() => {
-    // Simple way to check - try to access the endpoint
-    fetch('/api/scrape', { 
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: '' }) // Empty URL will trigger validation, not the disabled check
-    }).catch(() => {
-      setIsScrapingEnabled(false);
-    });
+    setIsScrapingEnabled(process.env.NODE_ENV !== 'production');
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -53,20 +46,23 @@ export default function ScrapePage() {
     <div className="min-h-screen bg-gray-100 py-8">
       <div className="max-w-2xl mx-auto px-4">
         <h1 className="text-3xl font-bold text-gray-900 mb-8">Web Scraper</h1>
-        
+
         {!isScrapingEnabled && (
           <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
             <div className="flex">
               <div className="flex-shrink-0">
                 <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  <path
+                    fillRule="evenodd"
+                    d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                    clipRule="evenodd"
+                  />
                 </svg>
               </div>
               <div className="ml-3">
                 <h3 className="text-sm font-medium text-yellow-800">Scraping Disabled</h3>
                 <p className="mt-1 text-sm text-yellow-700">
-                  Web scraping is disabled in production for security and cost control. 
-                  This feature is only available in development environments.
+                  Web scraping is disabled.
                 </p>
               </div>
             </div>
@@ -141,32 +137,19 @@ export default function ScrapePage() {
                       <h3 className="font-medium text-gray-900 mb-4">Content Chunks ({result.data.chunks.length})</h3>
                       <div className="space-y-4 max-h-96 overflow-y-auto">
                         {result.data.chunks.map((chunk: any, index: number) => (
-                          <div 
-                            key={index} 
-                            className="border border-gray-100 rounded-md p-3 bg-gray-50"
-                          >
+                          <div key={index} className="border border-gray-100 rounded-md p-3 bg-gray-50">
                             <div className="flex justify-between items-center mb-2">
-                              <span className="text-xs font-medium text-blue-600 bg-blue-100 px-2 py-1 rounded">
-                                Chunk {chunk.index + 1}
-                              </span>
-                              <span className="text-xs text-gray-500">
-                                {chunk.length} characters
-                              </span>
+                              <span className="text-xs font-medium text-blue-600 bg-blue-100 px-2 py-1 rounded">Chunk {chunk.index + 1}</span>
+                              <span className="text-xs text-gray-500">{chunk.length} characters</span>
                             </div>
                             <div className="text-sm text-gray-700">
                               <div className="mb-2">
                                 <strong className="text-gray-900">Preview:</strong>
                               </div>
-                              <div className="bg-white p-2 rounded border text-xs leading-relaxed">
-                                {chunk.preview}
-                              </div>
+                              <div className="bg-white p-2 rounded border text-xs leading-relaxed">{chunk.preview}</div>
                               <details className="mt-2">
-                                <summary className="cursor-pointer text-blue-600 text-xs hover:underline">
-                                  Show full content
-                                </summary>
-                                <div className="mt-2 bg-white p-2 rounded border text-xs leading-relaxed max-h-40 overflow-y-auto">
-                                  {chunk.content}
-                                </div>
+                                <summary className="cursor-pointer text-blue-600 text-xs hover:underline">Show full content</summary>
+                                <div className="mt-2 bg-white p-2 rounded border text-xs leading-relaxed max-h-40 overflow-y-auto">{chunk.content}</div>
                               </details>
                             </div>
                           </div>
