@@ -79,20 +79,69 @@ export default function ScrapePage() {
               </div>
 
               {result.data && (
-                <div className="bg-gray-50 border border-gray-200 rounded-md p-4">
-                  <h3 className="font-medium text-gray-900 mb-2">Scraped Content:</h3>
-                  <div className="space-y-2 text-sm text-gray-600">
-                    <p>
-                      <strong>ID:</strong> {result.data.id}
-                    </p>
-                    <p>
-                      <strong>URL:</strong> {result.data.url}
-                    </p>
-                    <p>
-                      <strong>Title:</strong> {result.data.title}
-                    </p>
+                <>
+                  <div className="bg-gray-50 border border-gray-200 rounded-md p-4">
+                    <h3 className="font-medium text-gray-900 mb-2">Scraped Content:</h3>
+                    <div className="space-y-2 text-sm text-gray-600">
+                      <p>
+                        <strong>ID:</strong> {result.data.id}
+                      </p>
+                      <p>
+                        <strong>URL:</strong> {result.data.url}
+                      </p>
+                      <p>
+                        <strong>Title:</strong> {result.data.title}
+                      </p>
+                      <p>
+                        <strong>Chunks Processed:</strong> {result.data.chunksProcessed}
+                      </p>
+                      {result.data.deletedVectors > 0 && (
+                        <p>
+                          <strong>Previous Vectors Deleted:</strong> {result.data.deletedVectors}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                </div>
+
+                  {result.data.chunks && result.data.chunks.length > 0 && (
+                    <div className="bg-white border border-gray-200 rounded-md p-4">
+                      <h3 className="font-medium text-gray-900 mb-4">Content Chunks ({result.data.chunks.length})</h3>
+                      <div className="space-y-4 max-h-96 overflow-y-auto">
+                        {result.data.chunks.map((chunk: any, index: number) => (
+                          <div 
+                            key={index} 
+                            className="border border-gray-100 rounded-md p-3 bg-gray-50"
+                          >
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="text-xs font-medium text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                                Chunk {chunk.index + 1}
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                {chunk.length} characters
+                              </span>
+                            </div>
+                            <div className="text-sm text-gray-700">
+                              <div className="mb-2">
+                                <strong className="text-gray-900">Preview:</strong>
+                              </div>
+                              <div className="bg-white p-2 rounded border text-xs leading-relaxed">
+                                {chunk.preview}
+                              </div>
+                              <details className="mt-2">
+                                <summary className="cursor-pointer text-blue-600 text-xs hover:underline">
+                                  Show full content
+                                </summary>
+                                <div className="mt-2 bg-white p-2 rounded border text-xs leading-relaxed max-h-40 overflow-y-auto">
+                                  {chunk.content}
+                                </div>
+                              </details>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}

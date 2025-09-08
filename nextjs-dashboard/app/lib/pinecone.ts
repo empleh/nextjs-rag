@@ -66,3 +66,51 @@ export async function queryVectors(
     filter
   });
 }
+
+export async function getContextualChunks(
+  queryEmbedding: number[],
+  topK: number = 5,
+  contextWindow: number = 1
+) {
+  const index = await ensureIndexExists();
+
+  // First, get the best matching chunks
+  const results = await index.query({
+    vector: queryEmbedding,
+    topK,
+    includeMetadata: true
+  });
+
+  if (!results.matches) return results;
+
+  // Collect all chunk IDs we need (including context)
+  const chunkIdsToRetrieve = new Set<string>();
+  const urlToChunkMap = new Map<string, number[]>();
+
+  results.matches.forEach(match => {
+    if (match.metadata) {
+      const chunkIndex = match.metadata.chunkIndex as number;
+      const url = match.metadata.url as string;
+      
+      if (!urlToChunkMap.has(url)) {
+        urlToChunkMap.set(url, []);
+      }
+      urlToChunkMap.get(url)!.push(chunkIndex);
+
+      // Add the main chunk
+      chunkIdsToRetrieve.add(match.id);
+      
+      // Add context chunks (before and after)
+      for (let i = Math.max(0, chunkIndex - contextWindow); i <= chunkIndex + contextWindow; i++) {
+        const contextChunkId = `${url.replace(/[^a-zA-Z0-9]/g, '_')}_chunk_${i}`;
+        chunkIdsToRetrieve.add(contextChunkId);
+      }
+    }
+  });
+
+  // Retrieve all needed chunks
+  const allChunkIds = Array.from(chunkIdsToRetrieve);
+  const contextResults = await index.fetch(allChunkIds);
+
+  return { ...results, contextChunks: contextResults };
+}

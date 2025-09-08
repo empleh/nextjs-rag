@@ -4,9 +4,10 @@ import { Pinecone } from '@pinecone-database/pinecone';
 import { ensureIndexExists } from '@/app/lib/pinecone';
 import { google } from '@ai-sdk/google';
 import { embed } from 'ai';
-import { Readability } from '@mozilla/readability';
-import { JSDOM } from 'jsdom';
-import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
+import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
+import { HTMLWebBaseLoader } from "@langchain/community/document_loaders/web/html";
+import { MozillaReadabilityTransformer } from "@langchain/community/document_transformers/mozilla_readability";
+
 
 const pc = new Pinecone({
   apiKey: process.env.PINECONE_API_KEY!,
@@ -29,24 +30,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'URL is required' }, { status: 400 });
     }
 
-    // Simple scraping with fetch (we'll enhance this later)
-    const response = await fetch(url);
-    const html = await response.text();
-    const dom = new JSDOM(html);
-    const reader = new Readability(dom.window.document);
-    const article = reader.parse();
-
-    const textSplitter = new RecursiveCharacterTextSplitter({
-      chunkSize: 500,
-      chunkOverlap: 50,
+    const loader = new HTMLWebBaseLoader(
+      url
+    );
+    const transformer = new MozillaReadabilityTransformer();
+    const splitter = RecursiveCharacterTextSplitter.fromLanguage("html", {
+      chunkSize: 400,  // Smaller chunks for more granular retrieval
+      chunkOverlap: 100  // Minimal overlap since we'll grab context dynamically
     });
 
-    const textChunks = await textSplitter.splitText(CleanTextContent(article?.textContent ?? ''));
+    const docs = await loader.load();
 
-    console.log('textChunks', textChunks.length);
+    const sequence = transformer.pipe(splitter);
+    const vectorizedDocs = await sequence.invoke(docs);
+
+     console.log('textChunks', vectorizedDocs.length);
     
     // Smart content extraction that respects page structure
-    const title = article?.title
+    //const title = transformer.title
     //const chunks = extractSemanticChunks(html);
     
     // Delete existing vectors for this URL before re-indexing
@@ -68,27 +69,31 @@ export async function POST(req: NextRequest) {
       console.log(`Deleted ${idsToDelete.length} existing vectors for URL: ${url}`);
     }
 
-    // Create proper embeddings for each semantic chunk
-    console.log('chunks', textChunks);
+    // Create proper embeddings for each semantic chunk with sequence info
+    console.log('vectorizedDocs', vectorizedDocs.length);
     const vectors = [];
-    
-    for (let i = 0; i < textChunks.length; i++) {
+
+    for (let i = 0; i < vectorizedDocs.length; i++) {
+      const doc = vectorizedDocs[i];
       const chunkId = `${url.replace(/[^a-zA-Z0-9]/g, '_')}_chunk_${i}`;
-      
+
       // Generate proper embeddings using the same model as the chat route
       const { embedding } = await embed({
         model: google.textEmbeddingModel('text-embedding-004'),
-        value: textChunks[i],
+        value: doc.pageContent,
       });
-      
+
       vectors.push({
         id: chunkId,
         values: embedding,
         metadata: {
           url,
-          title,
-          content: textChunks[i],
+          title: docs[0]?.metadata?.title || 'Untitled',
+          content: doc.pageContent,
           chunkIndex: i,
+          totalChunks: vectorizedDocs.length,
+          hasNext: i < vectorizedDocs.length - 1,
+          hasPrevious: i > 0,
           timestamp: new Date().toISOString()
         }
       });
@@ -97,16 +102,24 @@ export async function POST(req: NextRequest) {
     // Store new vectors in Pinecone
     await index.upsert(vectors);
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       data: {
         id: `${url.replace(/[^a-zA-Z0-9]/g, '_')}`,
         url,
-        title,
-        chunksProcessed: textChunks.length,
-        deletedVectors: existingVectors.matches?.length || 0
+        title: docs[0]?.metadata?.title || 'Untitled',
+        chunksProcessed: vectorizedDocs.length,
+        deletedVectors: existingVectors.matches?.length || 0,
+        chunks: vectorizedDocs.map((doc, index) => ({
+          index,
+          content: doc.pageContent,
+          length: doc.pageContent.length,
+          preview: doc.pageContent.substring(0, 150) + (doc.pageContent.length > 150 ? '...' : ''),
+          hasNext: index < vectorizedDocs.length - 1,
+          hasPrevious: index > 0
+        }))
       },
-      message: 'Content scraped and stored in Pinecone. Ready for RAG processing.' 
+      message: 'Content scraped and stored in Pinecone with sequential context. Ready for RAG processing.'
     });
     
   } catch (error) {
@@ -137,12 +150,20 @@ export async function POST(req: NextRequest) {
 
 function CleanTextContent(text: string): string {
   const cleaned = text
-    // Replace multiple whitespace (spaces, tabs, newlines) with single spaces
-    .replace(/\s+/g, ' ')
+    // First, normalize line breaks and preserve paragraph structure
+    .replace(/\r\n/g, '\n') // Normalize Windows line endings
+    .replace(/\r/g, '\n')   // Normalize Mac line endings
+    // Preserve double line breaks (paragraph separators)
+    .replace(/\n\s*\n/g, '\n\n')
+    // Clean up excessive whitespace within lines (but keep line breaks)
+    .replace(/[ \t]+/g, ' ')
+    // Clean up excessive line breaks (max 2 consecutive)
+    .replace(/\n{3,}/g, '\n\n')
     // Remove leading/trailing whitespace
     .trim();
 
   console.log('Cleaned text length:', cleaned.length);
+  console.log('First 500 chars:', cleaned.substring(0, 500));
 
   return cleaned;
 }
