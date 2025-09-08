@@ -152,6 +152,15 @@ async function scrapeOneIdeaPage(url: string) {
     const response = await fetch(url);
     const html = await response.text();
     
+    // Extract page summary from the intro card
+    const summaryRegex = /<div class="card">\s*<h2>One Idea<\/h2>\s*<p>([\s\S]*?)<\/p>\s*<\/div>/;
+    const summaryMatch = summaryRegex.exec(html);
+    const pageSummary = summaryMatch ? summaryMatch[1]
+      .replace(/<br\s*\/?>/g, '\n')
+      .replace(/\s+/g, ' ')
+      .replace(/\n\s*\n/g, '\n\n')
+      .trim() : null;
+
     // Extract book cards using regex
     const bookCardRegex = /<div class="book-card">([\s\S]*?)<\/div>\s*<\/div>/g;
     const bookCards = [];
@@ -162,12 +171,18 @@ async function scrapeOneIdeaPage(url: string) {
     }
     
     console.log(`Found ${bookCards.length} book cards`);
+    console.log(`Found page summary: ${pageSummary ? 'Yes' : 'No'}`);
     
     // Process each book card
     const chunks = bookCards.map((cardHtml, index) => {
-      // Extract title
+      // Extract title and parse author
       const titleMatch = cardHtml.match(/<h3>(.*?)<\/h3>/);
-      const title = titleMatch ? titleMatch[1].replace(/<[^>]*>/g, '').trim() : `Book ${index + 1}`;
+      const fullTitle = titleMatch ? titleMatch[1].replace(/<[^>]*>/g, '').trim() : `Book ${index + 1}`;
+      
+      // Parse title and author from format "Title by Author"
+      const titleAuthorMatch = fullTitle.match(/^(.+?)\s+by\s+(.+)$/);
+      const bookTitle = titleAuthorMatch ? titleAuthorMatch[1].trim() : fullTitle;
+      const author = titleAuthorMatch ? titleAuthorMatch[2].trim() : 'Unknown Author';
       
       // Extract and clean content
       const cleanContent = cardHtml
@@ -190,7 +205,9 @@ async function scrapeOneIdeaPage(url: string) {
         .trim();
       
       return {
-        title,
+        fullTitle,
+        bookTitle,
+        author,
         content: cleanContent,
         index
       };
@@ -212,8 +229,39 @@ async function scrapeOneIdeaPage(url: string) {
       console.log(`Deleted ${idsToDelete.length} existing vectors for URL: ${url}`);
     }
     
-    // Create embeddings for each book card
+    // Create embeddings for page summary first (if exists)
     const vectors = [];
+    let vectorIndex = 0;
+    
+    if (pageSummary) {
+      const summaryId = `${url.replace(/[^a-zA-Z0-9]/g, '_')}_summary`;
+      
+      // Generate embedding for page summary
+      const { embedding: summaryEmbedding } = await embed({
+        model: google.textEmbeddingModel('text-embedding-004'),
+        value: `One Idea Philosophy: ${pageSummary}`,
+      });
+      
+      vectors.push({
+        id: summaryId,
+        values: summaryEmbedding,
+        metadata: {
+          url,
+          title: 'One Idea - Reading Philosophy',
+          bookTitle: 'One Idea',
+          author: 'Christian Peters',
+          content: `One Idea Philosophy: ${pageSummary}`,
+          chunkIndex: vectorIndex++,
+          totalChunks: chunks.length + 1, // +1 for summary
+          hasNext: chunks.length > 0,
+          hasPrevious: false,
+          timestamp: new Date().toISOString(),
+          type: 'page_summary'
+        }
+      });
+    }
+
+    // Create embeddings for each book card
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
       const chunkId = `${url.replace(/[^a-zA-Z0-9]/g, '_')}_book_${i}`;
@@ -229,12 +277,14 @@ async function scrapeOneIdeaPage(url: string) {
         values: embedding,
         metadata: {
           url,
-          title: chunk.title,
+          title: chunk.fullTitle,
+          bookTitle: chunk.bookTitle,
+          author: chunk.author,
           content: chunk.content,
-          chunkIndex: i,
-          totalChunks: chunks.length,
-          hasNext: i < chunks.length - 1,
-          hasPrevious: i > 0,
+          chunkIndex: vectorIndex++,
+          totalChunks: chunks.length + (pageSummary ? 1 : 0),
+          hasNext: vectorIndex < chunks.length + (pageSummary ? 1 : 0),
+          hasPrevious: vectorIndex > 1,
           timestamp: new Date().toISOString(),
           type: 'book_card'
         }
@@ -250,11 +300,19 @@ async function scrapeOneIdeaPage(url: string) {
         id: `${url.replace(/[^a-zA-Z0-9]/g, '_')}`,
         url,
         title: 'One Idea - Book Collection',
-        chunksProcessed: chunks.length,
+        chunksProcessed: chunks.length + (pageSummary ? 1 : 0),
         deletedVectors: existingVectors.matches?.length || 0,
+        pageSummary: pageSummary ? {
+          content: `One Idea Philosophy: ${pageSummary}`,
+          length: pageSummary.length,
+          preview: pageSummary.substring(0, 150) + (pageSummary.length > 150 ? '...' : ''),
+          type: 'page_summary'
+        } : null,
         chunks: chunks.map((chunk, index) => ({
-          index,
-          title: chunk.title,
+          index: index + (pageSummary ? 1 : 0), // Offset by summary if it exists
+          fullTitle: chunk.fullTitle,
+          bookTitle: chunk.bookTitle,
+          author: chunk.author,
           content: chunk.content,
           length: chunk.content.length,
           preview: chunk.content.substring(0, 150) + (chunk.content.length > 150 ? '...' : ''),
