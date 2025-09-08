@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Keep changes small and focused one step at a time so that its easy to view the changes and that changes don't overhaul entire files in 1 pass.
+
 ## Project Overview
 
 This is a Next.js App Router Course project - a dashboard application built with Next.js 15, TypeScript, Tailwind CSS, and PostgreSQL. The main application code is located in the `nextjs-dashboard/` subdirectory.

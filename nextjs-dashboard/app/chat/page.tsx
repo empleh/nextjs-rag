@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 
@@ -13,6 +13,7 @@ export default function Page() {
 
   const [question, setQuestion] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,6 +29,7 @@ export default function Page() {
 
       await sendMessage({ text: question });
       setQuestion('');
+      inputRef.current?.focus();
     }
     catch (error) {
       setError(error instanceof Error ? error.message : 'Not an error');
@@ -43,8 +45,7 @@ export default function Page() {
             <span className="text-white font-semibold">AI</span>
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-gray-900">Christian's AI Assistant</h1>
-            <p className="text-sm text-gray-500">Ask me anything about Christian</p>
+            <h1 className="text-lg font-semibold text-gray-900">Ask About Christian</h1>
           </div>
         </div>
       </div>
@@ -57,7 +58,7 @@ export default function Page() {
               <span className="text-2xl">💬</span>
             </div>
             <p className="text-lg font-medium">Start a conversation</p>
-            <p className="text-sm">Ask me about Christian's books, interests, or anything else!</p>
+            <p className="text-sm">Ask me about Christian's reading, interests, or anything else!</p>
           </div>
         )}
         
@@ -102,6 +103,7 @@ export default function Page() {
         <form onSubmit={handleSubmit} className="flex items-end space-x-3">
           <div className="flex-1">
             <input
+              ref={inputRef}
               type="text"
               id="question"
               value={question}

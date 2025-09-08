@@ -7,6 +7,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { messages } = body;
+    const question = messages[0].parts[0].text;
 
     if (!messages) {
       return NextResponse.json({ error: 'Question is required' }, { status: 400 });
@@ -15,28 +16,28 @@ export async function POST(request: NextRequest) {
     // Use Google's text embedding model (768 dimensions)
     const { embedding } = await embed({
       model: google.textEmbeddingModel('text-embedding-004'),
-      value: messages[0].parts[0].text,
+      value: question,
     });
 
-    console.log(messages[0].parts[0].text, embedding);
-
     const searchResults = await queryVectors(embedding, 5); // Top 5 matches
-    console.log(`Found ${searchResults.matches?.length || 0} matches`);
 
     // Step 3: Extract and format the context
     const relevantChunks =
-      searchResults.matches?.map((match) => ({
-        text: match.metadata?.text || '',
-        score: match.score || 0,
-        url: match.metadata?.url || '',
-        title: match.metadata?.title || '',
-      })) || [];
+      searchResults.matches?.map((match, index) => {
+        console.log(`📄 Match ${index + 1}: Score=${match.score}}`);
+        return {
+          text: match.metadata?.content || match.metadata?.text || '',
+          score: match.score || 0,
+          url: match.metadata?.url || '',
+          title: match.metadata?.title || '',
+        };
+      }) || [];
 
     // Filter by relevance score (optional - adjust threshold as needed)
     const highQualityChunks = relevantChunks.filter((chunk) => chunk.score > 0.7);
     const chunksToUse = highQualityChunks.length > 0 ? highQualityChunks : relevantChunks.slice(0, 3);
 
-    const context = defineContext('', []);
+    const context = defineContext(chunksToUse.map((c) => c.text.toString()));
 
     const result = streamText({
       model: google('gemini-1.5-flash'),
@@ -57,20 +58,22 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function defineContext(context: string, chunksToUse: string[]) {
-  const systemPrompt = `You are a helpful AI assistant that answers questions based on the provided context from scraped web content.
+function defineContext(chunksToUse: string[]) {
+  const contextContent =
+    chunksToUse.length > 0 ? `CONTEXT:\n${chunksToUse.map((chunk, i) => `[${i + 1}] ${chunk}`).join('\n\n')}\n\n` : 'No relevant context found.\n\n';
 
-CONTEXT:
-${context}
+  const systemPrompt = `You are Christian Peters' friendly AI assistant. You know all about Christian and answer questions in a casual, conversational way - like you're talking to a friend who's curious about him.
 
-INSTRUCTIONS:
-- Answer the user's question using the provided context
-- If the context contains relevant information, use it to provide a detailed answer
-- If the context doesn't contain enough relevant information, say so clearly
-- Always cite which source(s) you're referencing when possible
-- Be conversational and helpful
-- If you're unsure about something, express that uncertainty
-
+${contextContent}HOW TO RESPOND:
+- Answer naturally and conversationally - NO formal phrases like "Based on the provided text"
+- You know Christian Peters personally, so speak confidently about him
+- His full name is Christian Peters - just say it naturally
+- When asked about books, reading, interests, work - these are all about Christian
+- Use the context information naturally in your responses
+- Be friendly, engaging, and speak like you're sharing what you know about a friend
+- Don't mention "context" or "sources" unless specifically asked - just answer the question
+- Keep responses concise and natural
+ 
 ${
   chunksToUse.length === 0
     ? 'Note: No highly relevant context was found for this question. Provide a general response and suggest the user might need to add more relevant content to the knowledge base.'
