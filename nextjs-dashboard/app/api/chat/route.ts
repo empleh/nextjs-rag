@@ -7,7 +7,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { messages } = body;
-    const question = messages[0].parts[0].text;
+    const question = messages[messages.length - 1].parts[0].text;
+    console.log('question', question);
 
     if (!messages) {
       return NextResponse.json({ error: 'Question is required' }, { status: 400 });
@@ -19,7 +20,7 @@ export async function POST(request: NextRequest) {
       value: question,
     });
 
-    const searchResults = await queryVectors(embedding, 5); // Top 5 matches
+    const searchResults = await queryVectors(embedding, 10); // Top 10 matches
 
     // Step 3: Extract and format the context
     const relevantChunks =
@@ -35,9 +36,15 @@ export async function POST(request: NextRequest) {
 
     // Filter by relevance score (optional - adjust threshold as needed)
     const highQualityChunks = relevantChunks.filter((chunk) => chunk.score > 0.5);
-    const chunksToUse = highQualityChunks.length > 0 ? highQualityChunks : relevantChunks.slice(0, 3);
+    const chunksToUse = highQualityChunks.length > 0 ? highQualityChunks : relevantChunks.slice(0, 5);
+    const chunkedText = chunksToUse.map((c) => c.text.toString());
 
-    const context = defineContext(chunksToUse.map((c) => c.text.toString()));
+    console.log(`🔍 Question: ${question}`);
+    console.log(`📊 Total matches found: ${relevantChunks.length}`);
+    console.log(`✅ High quality chunks (>0.5): ${highQualityChunks.length}`);
+    console.log(`🎯 Using ${chunksToUse.length} chunks for context, ${chunkedText}`);
+
+    const context = defineContext(chunkedText);
 
     const result = streamText({
       model: google('gemini-1.5-flash'),

@@ -4,6 +4,9 @@ import { Pinecone } from '@pinecone-database/pinecone';
 import { ensureIndexExists } from '@/app/lib/pinecone';
 import { google } from '@ai-sdk/google';
 import { embed } from 'ai';
+import { Readability } from '@mozilla/readability';
+import { JSDOM } from 'jsdom';
+import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
 
 const pc = new Pinecone({
   apiKey: process.env.PINECONE_API_KEY!,
@@ -29,10 +32,22 @@ export async function POST(req: NextRequest) {
     // Simple scraping with fetch (we'll enhance this later)
     const response = await fetch(url);
     const html = await response.text();
+    const dom = new JSDOM(html);
+    const reader = new Readability(dom.window.document);
+    const article = reader.parse();
+
+    const textSplitter = new RecursiveCharacterTextSplitter({
+      chunkSize: 500,
+      chunkOverlap: 50,
+    });
+
+    const textChunks = await textSplitter.splitText(CleanTextContent(article?.textContent ?? ''));
+
+    console.log('textChunks', textChunks.length);
     
-    // Basic content extraction (you'll improve this with Cheerio)
-    const title = html.match(/<title>(.*?)<\/title>/)?.[1] || 'Untitled';
-    const textContent = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    // Smart content extraction that respects page structure
+    const title = article?.title
+    //const chunks = extractSemanticChunks(html);
     
     // Delete existing vectors for this URL before re-indexing
     const index = await ensureIndexExists();
@@ -53,17 +68,17 @@ export async function POST(req: NextRequest) {
       console.log(`Deleted ${idsToDelete.length} existing vectors for URL: ${url}`);
     }
 
-    // Create proper embeddings using Google's text embedding model
-    const chunks = textContent.match(/.{1,1000}/g) || [textContent];
+    // Create proper embeddings for each semantic chunk
+    console.log('chunks', textChunks);
     const vectors = [];
     
-    for (let i = 0; i < chunks.length; i++) {
+    for (let i = 0; i < textChunks.length; i++) {
       const chunkId = `${url.replace(/[^a-zA-Z0-9]/g, '_')}_chunk_${i}`;
       
       // Generate proper embeddings using the same model as the chat route
       const { embedding } = await embed({
         model: google.textEmbeddingModel('text-embedding-004'),
-        value: chunks[i],
+        value: textChunks[i],
       });
       
       vectors.push({
@@ -72,7 +87,7 @@ export async function POST(req: NextRequest) {
         metadata: {
           url,
           title,
-          content: chunks[i],
+          content: textChunks[i],
           chunkIndex: i,
           timestamp: new Date().toISOString()
         }
@@ -88,7 +103,7 @@ export async function POST(req: NextRequest) {
         id: `${url.replace(/[^a-zA-Z0-9]/g, '_')}`,
         url,
         title,
-        chunksProcessed: chunks.length,
+        chunksProcessed: textChunks.length,
         deletedVectors: existingVectors.matches?.length || 0
       },
       message: 'Content scraped and stored in Pinecone. Ready for RAG processing.' 
@@ -118,4 +133,16 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+function CleanTextContent(text: string): string {
+  const cleaned = text
+    // Replace multiple whitespace (spaces, tabs, newlines) with single spaces
+    .replace(/\s+/g, ' ')
+    // Remove leading/trailing whitespace
+    .trim();
+
+  console.log('Cleaned text length:', cleaned.length);
+
+  return cleaned;
 }
