@@ -30,6 +30,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'URL is required' }, { status: 400 });
     }
 
+    if(url === 'https://christianpeters.dev/one-idea/'){
+      return scrapeOneIdeaPage(url);
+    }
+
     const loader = new HTMLWebBaseLoader(
       url
     );
@@ -43,12 +47,6 @@ export async function POST(req: NextRequest) {
 
     const sequence = transformer.pipe(splitter);
     const vectorizedDocs = await sequence.invoke(docs);
-
-     console.log('textChunks', vectorizedDocs.length);
-    
-    // Smart content extraction that respects page structure
-    //const title = transformer.title
-    //const chunks = extractSemanticChunks(html);
     
     // Delete existing vectors for this URL before re-indexing
     const index = await ensureIndexExists();
@@ -148,22 +146,132 @@ export async function POST(req: NextRequest) {
   }
 }
 
-function CleanTextContent(text: string): string {
-  const cleaned = text
-    // First, normalize line breaks and preserve paragraph structure
-    .replace(/\r\n/g, '\n') // Normalize Windows line endings
-    .replace(/\r/g, '\n')   // Normalize Mac line endings
-    // Preserve double line breaks (paragraph separators)
-    .replace(/\n\s*\n/g, '\n\n')
-    // Clean up excessive whitespace within lines (but keep line breaks)
-    .replace(/[ \t]+/g, ' ')
-    // Clean up excessive line breaks (max 2 consecutive)
-    .replace(/\n{3,}/g, '\n\n')
-    // Remove leading/trailing whitespace
-    .trim();
-
-  console.log('Cleaned text length:', cleaned.length);
-  console.log('First 500 chars:', cleaned.substring(0, 500));
-
-  return cleaned;
+async function scrapeOneIdeaPage(url: string) {
+  try {
+    // Fetch the HTML
+    const response = await fetch(url);
+    const html = await response.text();
+    
+    // Extract book cards using regex
+    const bookCardRegex = /<div class="book-card">([\s\S]*?)<\/div>\s*<\/div>/g;
+    const bookCards = [];
+    let match;
+    
+    while ((match = bookCardRegex.exec(html)) !== null) {
+      bookCards.push(match[0]);
+    }
+    
+    console.log(`Found ${bookCards.length} book cards`);
+    
+    // Process each book card
+    const chunks = bookCards.map((cardHtml, index) => {
+      // Extract title
+      const titleMatch = cardHtml.match(/<h3>(.*?)<\/h3>/);
+      const title = titleMatch ? titleMatch[1].replace(/<[^>]*>/g, '').trim() : `Book ${index + 1}`;
+      
+      // Extract and clean content
+      const cleanContent = cardHtml
+        // Remove image and link elements
+        .replace(/<img[^>]*>/g, '')
+        .replace(/<div class="book-links">[\s\S]*?<\/div>/g, '')
+        // Convert HTML to text
+        .replace(/<h3>/g, '\n')
+        .replace(/<\/h3>/g, '\n')
+        .replace(/<p>/g, '\n')
+        .replace(/<\/p>/g, '\n')
+        .replace(/<br\s*\/?>/g, '\n')
+        .replace(/<strong>/g, '')
+        .replace(/<\/strong>/g, '')
+        .replace(/<[^>]*>/g, ' ')
+        // Clean up whitespace
+        .replace(/&nbsp;/g, ' ')
+        .replace(/\s+/g, ' ')
+        .replace(/\n\s*\n/g, '\n\n')
+        .trim();
+      
+      return {
+        title,
+        content: cleanContent,
+        index
+      };
+    });
+    
+    // Delete existing vectors for this URL
+    const index = await ensureIndexExists();
+    const urlFilter = { url: { $eq: url } };
+    const existingVectors = await index.query({
+      vector: Array(768).fill(0),
+      topK: 1000,
+      filter: urlFilter,
+      includeMetadata: false
+    });
+    
+    if (existingVectors.matches && existingVectors.matches.length > 0) {
+      const idsToDelete = existingVectors.matches.map(match => match.id);
+      await index.deleteMany(idsToDelete);
+      console.log(`Deleted ${idsToDelete.length} existing vectors for URL: ${url}`);
+    }
+    
+    // Create embeddings for each book card
+    const vectors = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      const chunkId = `${url.replace(/[^a-zA-Z0-9]/g, '_')}_book_${i}`;
+      
+      // Generate embeddings
+      const { embedding } = await embed({
+        model: google.textEmbeddingModel('text-embedding-004'),
+        value: chunk.content,
+      });
+      
+      vectors.push({
+        id: chunkId,
+        values: embedding,
+        metadata: {
+          url,
+          title: chunk.title,
+          content: chunk.content,
+          chunkIndex: i,
+          totalChunks: chunks.length,
+          hasNext: i < chunks.length - 1,
+          hasPrevious: i > 0,
+          timestamp: new Date().toISOString(),
+          type: 'book_card'
+        }
+      });
+    }
+    
+    // Store vectors
+    await index.upsert(vectors);
+    
+    return NextResponse.json({
+      success: true,
+      data: {
+        id: `${url.replace(/[^a-zA-Z0-9]/g, '_')}`,
+        url,
+        title: 'One Idea - Book Collection',
+        chunksProcessed: chunks.length,
+        deletedVectors: existingVectors.matches?.length || 0,
+        chunks: chunks.map((chunk, index) => ({
+          index,
+          title: chunk.title,
+          content: chunk.content,
+          length: chunk.content.length,
+          preview: chunk.content.substring(0, 150) + (chunk.content.length > 150 ? '...' : ''),
+          type: 'book_card'
+        }))
+      },
+      message: 'One Idea page scraped with book-card structure preserved. Ready for RAG processing.'
+    });
+    
+  } catch (error) {
+    console.error('Error scraping One Idea page:', error);
+    return NextResponse.json(
+      { 
+        error: 'Failed to scrape One Idea page',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }, 
+      { status: 500 }
+    );
+  }
 }
