@@ -80,24 +80,18 @@ export default function Page() {
             }`}>
               {message.parts.map((part, index) => (
                 part.type === 'text' ? (
-                  <p key={index} className="text-sm whitespace-pre-wrap">{part.text}</p>
+                  <p key={index} className="text-sm whitespace-pre-wrap">
+                    {part.text}
+                    {/* Show cursor for streaming assistant messages */}
+                    {message.role === 'assistant' && status === 'streaming' && index === message.parts.length - 1 && (
+                      <span className="inline-block w-2 h-4 bg-gray-400 ml-1 animate-pulse"></span>
+                    )}
+                  </p>
                 ) : null
               ))}
             </div>
           </div>
         ))}
-        
-        {status === 'streaming' && (
-          <div className="flex justify-start">
-            <div className="bg-white text-gray-900 shadow-sm border border-gray-200 px-4 py-2 rounded-2xl">
-              <div className="flex space-x-1">
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
-              </div>
-            </div>
-          </div>
-        )}
         
         <div ref={messagesEndRef} />
       </div>

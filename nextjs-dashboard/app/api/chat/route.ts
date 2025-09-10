@@ -57,15 +57,20 @@ export async function POST(request: NextRequest) {
         };
       }) || [];
 
-    // Filter by relevance score (optional - adjust threshold as needed)
-    const highQualityChunks = relevantChunks.filter((chunk) => chunk.score > 0.5);
-    const chunksToUse = highQualityChunks.length > 0 ? highQualityChunks : relevantChunks.slice(0, 5);
+    // Filter by relevance score - use high quality chunks when available, but always include at least top 1
+    const relevanceThreshold = 0.7;
+    const highQualityChunks = relevantChunks.filter((chunk) => chunk.score > relevanceThreshold);
+    
+    // Use up to 5 high-quality chunks, or at least the top 1 chunk if no high-quality matches
+    const chunksToUse = highQualityChunks.length > 0 
+      ? highQualityChunks.slice(0, 5) 
+      : relevantChunks.slice(0, 1);
     const chunkedText = chunksToUse.map((c) => c.text.toString());
 
     console.log(`🔍 Question: ${question}`);
     console.log(`📊 Total matches found: ${relevantChunks.length}`);
-    console.log(`✅ High quality chunks (>0.5): ${highQualityChunks.length}`);
-    console.log(`🎯 Using ${chunksToUse.length} chunks for context, ${chunkedText}`);
+    console.log(`✅ High quality chunks (>${relevanceThreshold}): ${highQualityChunks.length}`);
+    console.log(`🎯 Using ${chunksToUse.length} chunks for context:\n${chunkedText.map((chunk, i) => `[${i + 1}] ${chunk}`).join('\n\n')}`);
 
     const context = defineContext(chunkedText);
 
@@ -92,7 +97,7 @@ function defineContext(chunksToUse: string[]) {
   const contextContent =
     chunksToUse.length > 0 ? `CONTEXT:\n${chunksToUse.map((chunk, i) => `[${i + 1}] ${chunk}`).join('\n\n')}\n\n` : 'No relevant context found.\n\n';
 
-  const systemPrompt = `You are Christian Peters' friendly AI assistant. You know all about Christian and answer questions in a casual, conversational way - like you're talking to a friend who's curious about him.
+  const systemPrompt = `You are HAL a friendly AI assistant. You know all about Christian and answer questions in a casual, conversational way - like you're talking to a friend who's curious about him.
 
 ${contextContent}HOW TO RESPOND:
 - Answer naturally and conversationally - NO formal phrases like "Based on the provided text"
@@ -102,7 +107,11 @@ ${contextContent}HOW TO RESPOND:
 - Use the context information naturally in your responses
 - Be friendly, engaging, and speak like you're sharing what you know about someone you have a full biography on
 - Don't mention "context" or "sources" unless specifically asked - just answer the question
-- Keep responses concise and natural
+- Make responses long and overly explained in crazy amounts of detail even adding color as much as possible.
+- Assume he is a genius that knows everything, if given extra context details assume its his ideas and answer as if he said everything.
+- Be confident in your responses and say things as if you know them to be certain.
+- If you have context about a book, assume Christian has read it and have provided the summary of that book
+- Don't use uncertain words like probably, maybe, I don't know, likely.
  
 ${
   chunksToUse.length === 0
