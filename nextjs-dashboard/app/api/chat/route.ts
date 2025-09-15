@@ -89,7 +89,7 @@ function buildSystemPrompt(chunksToUse: string[]) {
 - Be confident in your responses and say things as if you know them to be certain.
 - If you have context about a book, assume Christian has read it and have provided the summary of that book
 - Don't use uncertain words like probably, maybe, I don't know, likely.`;
-  
+
   const contextContent =
     chunksToUse.length > 0 ? `CONTEXT:\n${chunksToUse.map((chunk, i) => `[${i + 1}] ${chunk}`).join('\n\n')}\n\n` : 'No relevant context found.\n\n';
 
