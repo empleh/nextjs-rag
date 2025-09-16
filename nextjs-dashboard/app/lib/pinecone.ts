@@ -5,6 +5,20 @@ const pc = new Pinecone({
   apiKey: process.env.PINECONE_API_KEY!,
 });
 
+export type VectorDetail = {
+  id: string;
+  values: any;
+  metadata: {
+    url: string;
+    title: string;
+    content: string;
+    chunkIndex: number;
+    totalChunks: number;
+    hasNext: boolean;
+    hasPrevious: boolean;
+    timestamp: string;
+  };
+};
 export async function ensureIndexExists() {
   const indexName = process.env.PINECONE_INDEX_NAME;
   if (!indexName) {
@@ -44,73 +58,42 @@ export async function ensureIndexExists() {
   }
 }
 
-export interface VectorMetadata {
-  text: string;
-  url: string;
-  title: string;
-  chunkIndex: number;
-  wordCount: number;
-}
-
-export async function queryVectors(
-  queryEmbedding: number[],
-  topK: number = 5,
-  filter?: Record<string, any>
-) {
+export async function queryVectors(queryEmbedding: number[], topK: number = 5, filter?: Record<string, any>) {
   const index = await ensureIndexExists();
 
   return await index.query({
     vector: queryEmbedding,
     topK,
     includeMetadata: true,
-    filter
+    filter,
   });
 }
 
-export async function getContextualChunks(
-  queryEmbedding: number[],
-  topK: number = 5,
-  contextWindow: number = 1
-) {
+export async function clearExistingVectors(key: {url?: string}){
   const index = await ensureIndexExists();
 
-  // First, get the best matching chunks
-  const results = await index.query({
-    vector: queryEmbedding,
-    topK,
-    includeMetadata: true
+  // TODO: add other filter options
+  const filter = { url: { $eq: key.url } };
+  const existingVectors = await index.query({
+    vector: Array(768).fill(0), // Dummy vector for filtering
+    topK: 1000, // Get up to 1000 existing vectors
+    filter: filter,
+    includeMetadata: false
   });
 
-  if (!results.matches) return results;
+  // Delete existing vectors if any found
+  if (existingVectors.matches && existingVectors.matches.length > 0) {
+    const idsToDelete = existingVectors.matches.map(match => match.id);
+    await index.deleteMany(idsToDelete);
+    console.log(`Deleted ${idsToDelete.length} existing vectors for URL: ${filter.url}`);
+  }
 
-  // Collect all chunk IDs we need (including context)
-  const chunkIdsToRetrieve = new Set<string>();
-  const urlToChunkMap = new Map<string, number[]>();
+  return existingVectors;
+}
 
-  results.matches.forEach(match => {
-    if (match.metadata) {
-      const chunkIndex = match.metadata.chunkIndex as number;
-      const url = match.metadata.url as string;
-      
-      if (!urlToChunkMap.has(url)) {
-        urlToChunkMap.set(url, []);
-      }
-      urlToChunkMap.get(url)!.push(chunkIndex);
+export async function storeVectors(vectors: VectorDetail[]){
+  const index = await ensureIndexExists();
 
-      // Add the main chunk
-      chunkIdsToRetrieve.add(match.id);
-      
-      // Add context chunks (before and after)
-      for (let i = Math.max(0, chunkIndex - contextWindow); i <= chunkIndex + contextWindow; i++) {
-        const contextChunkId = `${url.replace(/[^a-zA-Z0-9]/g, '_')}_chunk_${i}`;
-        chunkIdsToRetrieve.add(contextChunkId);
-      }
-    }
-  });
-
-  // Retrieve all needed chunks
-  const allChunkIds = Array.from(chunkIdsToRetrieve);
-  const contextResults = await index.fetch(allChunkIds);
-
-  return { ...results, contextChunks: contextResults };
+  // Store new vectors in Pinecone
+  await index.upsert(vectors);
 }
